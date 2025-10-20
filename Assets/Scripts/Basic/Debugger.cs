@@ -2,81 +2,86 @@ using UnityEngine;
 using BansheeGz.BGDatabase;
 using System;
 
+/// <summary>
+/// Final legacy-safe BGDatabase debugger.
+/// Works fully with read + update on old BGDatabase versions (no Add support).
+/// Focused on "Items" table.
+/// </summary>
 public class Debugger : MonoBehaviour
 {
     void Start()
     {
-        Debug.Log("=== BGDatabase Debugger Started ===");
+        Debug.Log("=== 🧩 BGDatabase: Items Table Debugger Started (Read/Write Mode) ===");
 
         if (BGRepo.I == null)
         {
-            Debug.LogError("❌ BGDatabase repository not found!");
+            Debug.LogError("❌ BGDatabase repository not found! Make sure the BGDatabase prefab exists in the scene.");
             return;
         }
 
-        Debug.Log($"Total table count: {BGRepo.I.CountMeta}");
-
-        // Retrieve the "Items" table
-        var itemsTable = BGRepo.I["Items"];
-
-        if (itemsTable.CountEntities == 0)
+        // Get the Items table
+        var meta = BGRepo.I["Items"];
+        if (meta == null)
         {
-            Debug.LogWarning("⚠️ The 'Items' table has no rows.");
+            Debug.LogError("❌ Table 'Items' not found in BGDatabase!");
             return;
         }
 
-        // Get the first row (entity)
-        var firstItem = itemsTable.GetEntity(0);
-        Debug.Log($"First item: {firstItem.Get<string>("name")}");
-
-        // List all items
-        itemsTable.ForEachEntity(entity =>
+        // If table is empty
+        if (meta.CountEntities == 0)
         {
+            Debug.LogWarning("⚠️ 'Items' table has no rows. Please add rows manually in BGDatabase Editor.");
+            return;
+        }
+
+        // 1️⃣ Dump all current data
+        DumpItems(meta);
+
+        // 2️⃣ Modify a random one
+        ModifyRandomItem(meta);
+
+        // 3️⃣ Save database
+        BGRepo.I.Save();
+        Debug.Log("💾 Repository saved successfully.");
+
+        // 4️⃣ Dump again to confirm
+        DumpItems(meta);
+
+        Debug.Log("✅ BGDatabase runtime debugging complete.");
+    }
+
+    // ======================================================
+    // 🔍 Dump Items Table
+    // ======================================================
+    private void DumpItems(BGMetaEntity meta)
+    {
+        Debug.Log($"=== 📦 Dumping 'Items' Table ({meta.CountEntities} rows) ===");
+
+        for (int i = 0; i < meta.CountEntities; i++)
+        {
+            var entity = meta.GetEntity(i);
             string name = entity.Get<string>("name");
             int value = entity.Get<int>("value");
-            Debug.Log($"Item: {name} (Value: {value})");
-        });
-
-        // Display the entire database content
-        ShowAllRepo();
+            Debug.Log($"🧱 Item #{i}: Name={name}, Value={value}");
+        }
     }
 
-    // Display all tables and entities in the repository
-    private void ShowAllRepo()
+    // ======================================================
+    // ✏️ Modify Random Entity
+    // ======================================================
+    private void ModifyRandomItem(BGMetaEntity meta)
     {
-        BGRepo.I.ForEachMeta(meta =>
-        {
-            Debug.Log($"--- TABLE: {meta.Name} ---");
-            meta.ForEachEntity(entity =>
-            {
-                Debug.Log($"Entity ID: {entity.Id}");
-                meta.ForEachField(field =>
-                {
-                    try
-                    {
-                        object value = GetFieldValue(entity, field);
-                        Debug.Log($"{field.Name}: {value}");
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.LogWarning($"Failed to read field: {field.Name} ({e.Message})");
-                    }
-                });
-                Debug.Log("------------------");
-            });
-        });
-    }
+        if (meta.CountEntities == 0) return;
 
-    // Automatically determines the correct data type when reading field values
-    private object GetFieldValue(BGEntity entity, BGField field)
-    {
-        Type type = field.ValueType;
+        int randomIndex = UnityEngine.Random.Range(0, meta.CountEntities);
+        var entity = meta.GetEntity(randomIndex);
 
-        if (type == typeof(string)) return entity.Get<string>(field.Name);
-        if (type == typeof(int)) return entity.Get<int>(field.Name);
-        if (type == typeof(float)) return entity.Get<float>(field.Name);
-        if (type == typeof(bool)) return entity.Get<bool>(field.Name);
+        string name = entity.Get<string>("name");
+        int oldValue = entity.Get<int>("value");
 
-        return entity.Get<string>(field.Name);
+        int newValue = oldValue + UnityEngine.Random.Range(1, 5);
+        entity.Set("value", newValue);
+
+        Debug.Log($"✏️ Updated item '{name}' (old value={oldValue} → new value={newValue})");
     }
 }
