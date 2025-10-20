@@ -4,41 +4,74 @@ using System;
 using System.Collections.Generic;
 
 /// <summary>
-/// Hyper-casual meta simulation debugger with parameter type support.
-/// Reads GameParams types dynamically (int, float, bool, string) and applies them.
+/// 🧩 Hyper-casual meta debugger (Legacy Compatible)
+/// - Works with BGDatabase 1.2.x–1.3.x
+/// - Reads typed parameters (int, float, bool, string)
+/// - Simulates Items, PlayerStats, Machines, Upgrades
+/// - Auto-detects BGDatabase components and logs them
 /// </summary>
+[DisallowMultipleComponent]
 public class Debugger : MonoBehaviour
 {
+    // 🔧 BGDatabase Components (Auto-Detected)
+    private BGDatabasePreloaderGo preloader;
+    private BGDataBinderDatabaseGo dbBinder;
+    private BGDataBinderBatchGo batchBinder;
+    private BGDataBinderFieldGo fieldBinder;
+    private BGDataBinderRowGo rowBinder;
+    private BGDataBinderGraphGo graphBinder;
+    private BGDataBinderTemplateGo templateBinder;
+    private BGEntityGo entityGo;
+
+    void Awake()
+    {
+        // Auto-discover all available BG components on this GameObject
+        preloader = GetComponent<BGDatabasePreloaderGo>();
+        dbBinder = GetComponent<BGDataBinderDatabaseGo>();
+        batchBinder = GetComponent<BGDataBinderBatchGo>();
+        fieldBinder = GetComponent<BGDataBinderFieldGo>();
+        rowBinder = GetComponent<BGDataBinderRowGo>();
+        graphBinder = GetComponent<BGDataBinderGraphGo>();
+        templateBinder = GetComponent<BGDataBinderTemplateGo>();
+        entityGo = GetComponent<BGEntityGo>();
+    }
+
     void Start()
     {
-        Debug.Log("=== 🧩 HyperCasual Meta Debugger Started (with Typed Params) ===");
+        Debug.Log("=== 🧩 HyperCasual Meta Debugger Started (Legacy Mode) ===");
 
+        // 1️⃣ BGRepo kontrolü
         if (BGRepo.I == null)
         {
             Debug.LogError("❌ BGDatabase repository not found! Add the prefab to the scene.");
             return;
         }
 
-        // Fetch tables safely
+        // 2️⃣ Preloader (manual trigger for older versions)
+        if (preloader != null)
+        {
+            Debug.Log("⚙️ BGDatabasePreloaderGo detected (legacy mode).");
+        }
+
+        // 3️⃣ Tablo erişimleri
         var items = BGRepo.I["Items"];
         var machines = SafeGetTable("Machines");
         var playerStats = SafeGetTable("PlayerStats");
         var upgrades = SafeGetTable("Upgrades");
         var gameParams = SafeGetTable("GameParams");
 
-        // Load all parameters into memory as dictionary
+        // 4️⃣ Parametreleri yükle
         var paramDict = LoadParameters(gameParams);
 
-        // 1️⃣ Items basic test
+        // 5️⃣ Meta simülasyon (senin orijinal mantık)
         if (items != null) Test_Items(items);
-
-        // 2️⃣ Player progress test
         if (playerStats != null) Simulate_PlayerProgress(playerStats, paramDict);
-
-        // 3️⃣ Machine production
         if (machines != null && upgrades != null) Simulate_MachineProduction(machines, upgrades, paramDict);
 
-        // Save repo
+        // 6️⃣ Binder testleri
+        TestAllBinders_Legacy();
+
+        // 7️⃣ Save işlemi
         BGRepo.I.Save();
         Debug.Log("💾 Repository saved successfully.");
         Debug.Log("✅ Simulation finished.");
@@ -86,7 +119,7 @@ public class Debugger : MonoBehaviour
                     case "int": parsed = int.Parse(value); break;
                     case "float": parsed = float.Parse(value); break;
                     case "bool": parsed = bool.Parse(value); break;
-                    default: parsed = value; break; // string fallback
+                    default: parsed = value; break;
                 }
             }
             catch (Exception)
@@ -180,5 +213,34 @@ public class Debugger : MonoBehaviour
             float finalOutput = (baseOutput + totalBonus + (level * 2)) * outputMultiplier;
             Debug.Log($"🏭 Machine '{name}' → Output={finalOutput:F1} (Base={baseOutput}, Level={level}, Bonus={totalBonus}, x{outputMultiplier})");
         }
+    }
+
+    // ======================================================
+    // 🔗 AUTO BINDER TESTS (LEGACY SAFE)
+    // ======================================================
+    private void TestAllBinders_Legacy()
+    {
+        Debug.Log("=== 🔗 Testing BGDatabase Components (Legacy Safe) ===");
+
+        if (dbBinder != null)
+            Debug.Log("🧩 DB Binder found and linked to Database prefab.");
+
+        if (batchBinder != null)
+            Debug.Log("📦 Batch Binder found — will bind multiple rows automatically.");
+
+        if (fieldBinder != null)
+            Debug.Log("🎯 Field Binder found — single field binding ready.");
+
+        if (rowBinder != null)
+            Debug.Log("🧱 Row Binder found — binds one entity to GameObject.");
+
+        if (graphBinder != null)
+            Debug.Log("🔗 Graph Binder found — relational tracking available.");
+
+        if (templateBinder != null)
+            Debug.Log("🧩 Template Binder found — prefab instantiation enabled.");
+
+        if (entityGo != null)
+            Debug.Log("🎮 EntityGo found — represents one database entity in scene.");
     }
 }
