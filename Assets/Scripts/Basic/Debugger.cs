@@ -2,13 +2,14 @@ using UnityEngine;
 using BansheeGz.BGDatabase;
 using System;
 using System.Collections.Generic;
+using TMPro;
 
 /// <summary>
-/// 🧩 Hyper-casual meta debugger (Legacy Compatible)
+/// 🧩 Hyper-casual meta debugger (BGDatabase Integrated)
 /// - Works with BGDatabase 1.2.x–1.3.x
 /// - Reads typed parameters (int, float, bool, string)
-/// - Simulates Items, PlayerStats, Machines, Upgrades
-/// - Auto-detects BGDatabase components and logs them
+/// - Connects GameObjects to DB rows dynamically
+/// - Demonstrates auto-binding via BGEntityGo and BGDataBinderFieldGo
 /// </summary>
 [DisallowMultipleComponent]
 public class Debugger : MonoBehaviour
@@ -23,9 +24,15 @@ public class Debugger : MonoBehaviour
     private BGDataBinderTemplateGo templateBinder;
     private BGEntityGo entityGo;
 
+    // 🔗 Example GameObjects for DB connections
+    [Header("DB Connection Targets")]
+    public GameObject playerObject;
+    public GameObject machineObject;
+    public GameObject uiCoinText;
+
     void Awake()
     {
-        // Auto-discover all available BG components on this GameObject
+        // Auto-discover BG components on this GameObject
         preloader = GetComponent<BGDatabasePreloaderGo>();
         dbBinder = GetComponent<BGDataBinderDatabaseGo>();
         batchBinder = GetComponent<BGDataBinderBatchGo>();
@@ -34,48 +41,159 @@ public class Debugger : MonoBehaviour
         graphBinder = GetComponent<BGDataBinderGraphGo>();
         templateBinder = GetComponent<BGDataBinderTemplateGo>();
         entityGo = GetComponent<BGEntityGo>();
+
+        var tmp = uiCoinText.GetComponent<TextMeshPro>();
+        if (tmp == null)
+        {
+            Debug.LogWarning("⚠️ UI object does not have TextMeshProUGUI component!");
+            return;
+        }
     }
 
     void Start()
     {
-        Debug.Log("=== 🧩 HyperCasual Meta Debugger Started (Legacy Mode) ===");
+        DebugListFields(BGRepo.I["Items"]);
+        Debug.Log("=== 🧩 HyperCasual Meta Debugger Started (Full Integration) ===");
 
-        // 1️⃣ BGRepo kontrolü
         if (BGRepo.I == null)
         {
             Debug.LogError("❌ BGDatabase repository not found! Add the prefab to the scene.");
             return;
         }
 
-        // 2️⃣ Preloader (manual trigger for older versions)
-        if (preloader != null)
-        {
-            Debug.Log("⚙️ BGDatabasePreloaderGo detected (legacy mode).");
-        }
-
-        // 3️⃣ Tablo erişimleri
-        var items = BGRepo.I["Items"];
+        // 1️⃣ Safe table loading
+        var items = SafeGetTable("Items");
         var machines = SafeGetTable("Machines");
         var playerStats = SafeGetTable("PlayerStats");
         var upgrades = SafeGetTable("Upgrades");
         var gameParams = SafeGetTable("GameParams");
 
-        // 4️⃣ Parametreleri yükle
+        // 2️⃣ Load typed parameters
         var paramDict = LoadParameters(gameParams);
 
-        // 5️⃣ Meta simülasyon (senin orijinal mantık)
+        // 3️⃣ Simulations
         if (items != null) Test_Items(items);
         if (playerStats != null) Simulate_PlayerProgress(playerStats, paramDict);
         if (machines != null && upgrades != null) Simulate_MachineProduction(machines, upgrades, paramDict);
 
-        // 6️⃣ Binder testleri
+        // 4️⃣ Connect GameObjects to DB rows
+        ConnectGameObjectsToDatabase(playerStats, machines);
+
+        
+
+        // 5️⃣ Auto-bind UI fields (e.g., coins)
+        BindUIFieldToDatabase(playerStats, "Coins");
+
+        // 6️⃣ Test all detected binders
         TestAllBinders_Legacy();
 
-        // 7️⃣ Save işlemi
+        // 7️⃣ Save database
         BGRepo.I.Save();
         Debug.Log("💾 Repository saved successfully.");
         Debug.Log("✅ Simulation finished.");
     }
+
+    // ======================================================
+    // 🔗 Connect GameObjects to DB Rows (BGEntityGo)
+    // ======================================================
+    private void ConnectGameObjectsToDatabase(BGMetaEntity playerStats, BGMetaEntity machines)
+    {
+        Debug.Log("=== 🔗 Connecting GameObjects to Database Rows ===");
+
+        if (playerObject != null && playerStats != null)
+        {
+            var entityGo = playerObject.AddComponent<BGEntityGo>();
+            entityGo.Entity = playerStats.GetEntity(0);
+            Debug.Log($"🎮 Linked {playerObject.name} → PlayerStats[0]");
+        }
+
+        if (machineObject != null && machines != null)
+        {
+            var entityGo = machineObject.AddComponent<BGEntityGo>();
+            entityGo.Entity = machines.GetEntity(0);
+            Debug.Log($"🏭 Linked {machineObject.name} → Machines[0]");
+        }
+    }
+
+    // ======================================================
+    // 🎯 Bind a specific field to a UI GameObject (LEGACY SAFE)
+    // ======================================================
+    private void BindUIFieldToDatabase(BGMetaEntity playerStats, string fieldName)
+    {
+        if (uiCoinText == null || playerStats == null)
+        {
+            Debug.LogWarning("⚠️ UI or PlayerStats not assigned.");
+            return;
+        }
+
+        var entity = playerStats.GetEntity(0);
+        if (entity == null)
+        {
+            Debug.LogWarning("⚠️ No entity found in PlayerStats table!");
+            return;
+        }
+
+        // 🔍 Field adını normalize et (case-insensitive karşılaştırma)
+        string matchedField = null;
+        for (int i = 0; i < playerStats.CountFields; i++)
+        {
+            var field = playerStats.GetField(i);
+            if (string.Equals(field.Name.Trim(), fieldName.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                matchedField = field.Name;
+                break;
+            }
+        }
+
+        if (matchedField == null)
+        {
+            Debug.LogWarning($"⚠️ Field '{fieldName}' not found in PlayerStats!");
+            return;
+        }
+
+        // 🧠 Değeri al
+        object value = "N/A";
+        
+        try
+        {
+            // En sık kullanılan tipleri sırayla dene
+            try { value = entity.Get<int>(matchedField); }
+            catch
+            {
+                try { value = entity.Get<float>(matchedField); }
+                catch
+                {
+                    try { value = entity.Get<string>(matchedField); }
+                    catch
+                    {
+                        try { value = entity.Get<bool>(matchedField); }
+                        catch
+                        {
+                            value = "(unknown type)";
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"⚠️ Could not read value for '{matchedField}': {ex.Message}");
+            value = "(error)";
+        }
+
+        // 💬 UI Text güncelle
+        var tmp = uiCoinText.GetComponent<TextMeshProUGUI>();
+        if (tmp == null)
+        {
+            Debug.LogError($"❌ {uiCoinText.name} has no TextMeshProUGUI component!");
+            return;
+        }
+        tmp.text = $"{matchedField}: {value}";
+        Debug.Log($"💬 Bound UI '{uiCoinText.name}' → PlayerStats[{matchedField}] = {value}");
+    }
+
+
+
 
     // ======================================================
     // ✅ Safe table getter
@@ -243,4 +361,47 @@ public class Debugger : MonoBehaviour
         if (entityGo != null)
             Debug.Log("🎮 EntityGo found — represents one database entity in scene.");
     }
+
+    private void DebugListFields(BGMetaEntity table)
+    {
+        if (table == null)
+        {
+            Debug.LogWarning("⚠️ Table is null!");
+            return;
+        }
+
+        Debug.Log($"=== 🧩 Listing fields for table: {table.Name} ===");
+
+        try
+        {
+            int fieldCount = table.CountFields;
+            for (int i = 0; i < fieldCount; i++)
+            {
+                var field = table.GetField(i);
+                string fieldName = field.Name;
+
+                // 🎯 Tipi runtime’dan tahmin et (tablodaki ilk entity’den oku)
+                string fieldType = "Unknown";
+                if (table.CountEntities > 0)
+                {
+                    try
+                    {
+                        var entity = table.GetEntity(0);
+                        var value = entity.Get<object>(fieldName);
+                        fieldType = value != null ? value.GetType().Name : "null";
+                    }
+                    catch { /* ignore */ }
+                }
+
+                Debug.Log($"🧠 Field[{i}] → {fieldName} (RuntimeType={fieldType})");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"❌ Could not read fields: {ex.Message}");
+        }
+    }
+
+
+
 }
